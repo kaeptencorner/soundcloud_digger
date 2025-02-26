@@ -1,0 +1,29 @@
+name: Run SoundCloud Bot Weekly
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Runs every Sunday at midnight UTC
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run SoundCloud Bot
+        run: python script.py
+        env:
+          SOUNDCLOUD_CLIENT_ID: ${{ secrets.SOUNDCLOUD_CLIENT_ID }}
+          SOUNDCLOUD_OAUTH_TOKEN: ${{ secrets.SOUNDCLOUD_OAUTH_TOKEN }}
+          SOUNDCLOUD_PLAYLIST_URL: ${{ secrets.SOUNDCLOUD_PLAYLIST_URL }}
+          PROPOSALS_PLAYLIST_ID: ${{ secrets.PROPOSALS_PLAYLIST_ID }}
