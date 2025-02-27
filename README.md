@@ -36,7 +36,7 @@ The script is built using Python and the SoundCloud API, and it is scheduled to 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/soundcloud-bot.git
+git clone https://github.com/kaeptencorner/soundcloud-bot.git
 cd soundcloud-bot
 ```
 
