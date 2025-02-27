@@ -11,13 +11,11 @@ OAUTH_TOKEN = os.getenv("SOUNDCLOUD_OAUTH_TOKEN")
 if not CLIENT_ID or not OAUTH_TOKEN:
     raise Exception("Missing SoundCloud API credentials. Set SOUNDCLOUD_CLIENT_ID and SOUNDCLOUD_OAUTH_TOKEN.")
 
-# These values can also be stored in your GitHub Secrets and injected as env variables.
+# Primary playlist to read tracks from
 PLAYLIST_URL = os.getenv("SOUNDCLOUD_PLAYLIST_URL", "https://soundcloud.com/USER/playlist-name")
-PROPOSALS_PLAYLIST_ID = os.getenv("PROPOSALS_PLAYLIST_ID", "1234567890")
-try:
-    PROPOSALS_PLAYLIST_ID = int(PROPOSALS_PLAYLIST_ID)
-except ValueError:
-    raise Exception("Invalid PROPOSALS_PLAYLIST_ID. Must be a numeric ID.")
+
+# Proposals playlist. Instead of using a numeric ID, we can also supply a URL and resolve it.
+PROPOSALS_PLAYLIST_URL = os.getenv("PROPOSALS_PLAYLIST_URL", "https://soundcloud.com/USER/proposals-playlist")
 
 HISTORY_FILE = "processed_tracks.txt"
 
@@ -40,6 +38,7 @@ def append_to_history(file_path, track_ids):
 
 def resolve_playlist(url_or_id):
     """Resolve a SoundCloud playlist by URL or ID."""
+    # If we detect a soundcloud.com link, attempt to resolve.
     if "soundcloud.com" in url_or_id:
         res = requests.get(
             "https://api.soundcloud.com/resolve",
@@ -47,6 +46,7 @@ def resolve_playlist(url_or_id):
             headers={"Authorization": f"OAuth {OAUTH_TOKEN}"}
         )
     else:
+        # If it's presumably a numeric ID
         res = requests.get(
             f"https://api.soundcloud.com/playlists/{url_or_id}",
             params={"client_id": CLIENT_ID},
@@ -68,17 +68,18 @@ def get_related_tracks(track_id):
         return []
     return res.json()
 
-def update_proposals_playlist(new_track_ids):
+def update_proposals_playlist(new_track_ids, proposals_playlist_id):
     """Update the proposals playlist with new track IDs."""
-    # Get current proposals playlist
+    # Get current proposals playlist by ID
     get_res = requests.get(
-        f"https://api.soundcloud.com/playlists/{PROPOSALS_PLAYLIST_ID}",
+        f"https://api.soundcloud.com/playlists/{proposals_playlist_id}",
         params={"client_id": CLIENT_ID},
         headers={"Authorization": f"OAuth {OAUTH_TOKEN}"}
     )
     if get_res.status_code != 200:
         raise Exception(f"Failed to retrieve proposals playlist: {get_res.text}")
     prop_data = get_res.json()
+
     current_tracks = prop_data.get("tracks", [])
     current_track_ids = [t.get("id") for t in current_tracks if t.get("id") is not None]
 
@@ -97,7 +98,7 @@ def update_proposals_playlist(new_track_ids):
             }
         }
         update_res = requests.put(
-            f"https://api.soundcloud.com/playlists/{PROPOSALS_PLAYLIST_ID}",
+            f"https://api.soundcloud.com/playlists/{proposals_playlist_id}",
             headers={
                 "Authorization": f"OAuth {OAUTH_TOKEN}",
                 "Content-Type": "application/json"
@@ -118,14 +119,20 @@ def main():
     processed_ids = load_history(HISTORY_FILE)
     new_processed_ids = set()
 
-    # Resolve the source playlist and get its tracks
+    # 1) Resolve the source playlist and get its tracks
     playlist_data = resolve_playlist(PLAYLIST_URL)
     playlist_tracks = playlist_data.get("tracks", [])
-    print(f"Found {len(playlist_tracks)} tracks in the playlist.")
+    print(f"Found {len(playlist_tracks)} tracks in the source playlist.")
+
+    # 2) Resolve the proposals playlist to get its numeric ID
+    proposals_data = resolve_playlist(PROPOSALS_PLAYLIST_URL)
+    proposals_playlist_id = proposals_data.get("id")
+    if not proposals_playlist_id:
+        raise Exception("Could not resolve proposals playlist ID from the provided URL.")
 
     proposals_to_add = []
 
-    # Process each track
+    # 3) Process each track in the source playlist
     for track in playlist_tracks:
         track_id = track.get("id")
         if track_id is None or track_id in processed_ids:
@@ -154,13 +161,13 @@ def main():
 
         new_processed_ids.add(track_id)
 
-    # Update proposals playlist if new tracks were found
+    # 4) Update proposals playlist if new tracks were found
     if proposals_to_add:
-        update_proposals_playlist(proposals_to_add)
+        update_proposals_playlist(proposals_to_add, proposals_playlist_id)
     else:
         print("No new low-like tracks found for any source track.")
 
-    # Save processed track IDs to history file
+    # 5) Save processed track IDs to history file
     if new_processed_ids:
         append_to_history(HISTORY_FILE, new_processed_ids)
 
